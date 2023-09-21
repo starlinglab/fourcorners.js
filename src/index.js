@@ -1,9 +1,10 @@
 require('regenerator-runtime/runtime');
 require('styles.scss');
+ 
+import { createC2pa } from 'c2pa';
+//import wasmSrc from '@c2pa/sdk/dist/assets/wasm/toolkit_bg.wasm?url';
+//import workerSrc from '@c2pa/sdk/dist/cai-caSdk.worker.min.js?url';
 
-import { ContentAuth } from '@contentauth/sdk';
-// import wasmSrc from '@contentauth/sdk/dist/assets/wasm/toolkit_bg.wasm?url';
-// import workerSrc from '@contentauth/sdk/dist/cai-caSdk.worker.min.js?url';
 
 class FourCorners {
 	constructor(arg) {
@@ -16,6 +17,8 @@ class FourCorners {
 			}
 		}
 		if(!args.container) return;
+		args.wasmSrc= "https://cdn.jsdelivr.net/npm/c2pa@0.17.2/dist/assets/wasm/toolkit_bg.wasm";
+		args.workerSrc= "https://cdn.jsdelivr.net/npm/c2pa@0.17.2/dist/c2pa.worker.min.js";
 		this.elems = {};
 		this.elems.container = args.container;
 		this.elems.img = this.getImg();
@@ -35,24 +38,25 @@ class FourCorners {
 		}
 
 		let caSdk;
-		if(!Object.values(jsonData).length && args.wasmSrc && args.workerSrc) {
-			try {
-			  caSdk = new ContentAuth({
-			  	wasmSrc: args.wasmSrc,
-			  	workerSrc: args.workerSrc
-			  });
-			} catch (error) {
-			  console.warn(error);
-			}
-		}
-		
 		setTimeout(async () => {
 			let contentAuthData;
 			(async () => {
+				console.log("starting")
+				if( args.wasmSrc && args.workerSrc) {
+					try {
+						caSdk = await createC2pa({
+							wasmSrc: args.wasmSrc,
+							workerSrc: args.workerSrc
+						});
+					} catch (error) {
+						console.warn(error);
+					}
+				}
+
 				// console.log(`Before processImage on ${this.src}`);
-				contentAuthData = caSdk && this.src ? await caSdk.processImage(this.src) : null;
+				contentAuthData = caSdk && this.src ? await caSdk.read(this.src) : null;
 				// console.log(`After processImage on ${this.src}`);
-				if(contentAuthData && contentAuthData.exists) {
+				if(contentAuthData) {
 					this.provenance = contentAuthData;
 					this.data = this.parseContentAuthData();
 				}
@@ -79,7 +83,7 @@ class FourCorners {
 	//DATA HANDLING
 
 	getVerifyUrl(beta) {
-		return `https://verify${beta ? '-beta' : ''}.contentauthenticity.org/inspect?source=${this.src}`;
+		return `https://verify.contentauthenticity.org/inspect?source=${this.src}`;
 	}
 
 	parseJsonData() {
@@ -105,12 +109,15 @@ class FourCorners {
 		const getAssertionData = (assertion) => {
 			let data = {};
 			if(this.provenance) {
-				this.provenance.claims.forEach((claim, key) => {
-					if(claim.assertions.get(assertion)) {
-						data = { ...data, ...claim.assertions.get(assertion).data };
+				Object.keys(this.provenance.manifestStore.manifests).forEach((key) => {
+					let claim=this.provenance.manifestStore.manifests[key];
+					if(claim.assertions.get(assertion).length>0) {
+						if (claim.assertions.get(assertion)) { 
+							data = { ...data, ...claim.assertions.get(assertion)[0].data };
+						}
 					}
 				});
-			}
+				}
 			return data;
 		}
 
